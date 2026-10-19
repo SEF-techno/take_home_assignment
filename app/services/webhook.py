@@ -88,9 +88,11 @@ class WebhookService(BaseService):
             message_id=message.id,
         )
 
-        message.status_updated_at = max(
-            data.event_timestamp,
-            message.status_updated_at,
+        # The timestamp on a new message is its creation time, not a provider
+        # status timestamp. The first event establishes the status clock.
+        message.status_updated_at = (
+            max(data.event_timestamp, message.status_updated_at)
+            if message.timeline else data.event_timestamp
         )
 
         self.session.add(event)
