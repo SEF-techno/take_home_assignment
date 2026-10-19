@@ -116,7 +116,7 @@ class Teacher(SQLModel, table = True):
     )
 
     name: str
-    phone: str
+    phone: str = Field(unique=True)
 
     cohort_id: UUID = Field(foreign_key="cohort.id")
 

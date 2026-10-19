@@ -14,3 +14,5 @@ wheels/
 
 # environment files
 .env
+# Local prerequisite services and credentials
+.local-setup/

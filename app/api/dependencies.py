@@ -10,6 +10,7 @@ from app.db.models import User
 from app.db.redis import is_jti_blacklisted
 from app.db.session import get_session
 from app.services.campaign import CampaignService
+from app.services.teacher import TeacherService
 from app.services.user import UserService
 from app.services.webhook import WebhookService
 from app.utils import decode_access_token
@@ -29,6 +30,13 @@ CampaignServiceDep = Annotated[
     CampaignService,
     Depends(get_campaign_service),
 ]
+
+
+async def get_teacher_service(session: SessionDep) -> TeacherService:
+    return TeacherService(session)
+
+
+TeacherServiceDep = Annotated[TeacherService, Depends(get_teacher_service)]
 
 ### Reusable User Service Dependency
 async def get_user_service(

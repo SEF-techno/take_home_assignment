@@ -9,9 +9,15 @@ dependencies = [
     "asyncpg>=0.31.0",
     "bcrypt==4.0.1",
     "fastapi[all]>=0.141.1",
+    "greenlet>=3.0",
     "passlib[bcrypt]>=1.7.4",
     "pyjwt>=2.15.1",
     "redis[hiredis]>=8.1.0",
     "scalar-fastapi>=1.9.1",
     "sqlmodel>=0.0.47",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
 ]

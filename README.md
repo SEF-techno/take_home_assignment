@@ -1,251 +1,58 @@
-# Backend Developer Take-Home Assignment
+# Communicator backend
 
-This repository contains a small FastAPI backend used as the starting
-point for the backend developer take-home assignment.
+FastAPI, PostgreSQL, and Redis application for the backend take-home assignment. See [REPOSITORY_GUIDE.md](REPOSITORY_GUIDE.md) and the [API](architecture_readme/README_API.md) and [webhook](architecture_readme/README_WEBHOOK.md) architecture guides for the existing design.
 
-The application is intentionally limited in scope. It is not intended to
-represent a complete production messaging platform. Your task will be to
-understand the existing implementation and work within it for the
-assignment described separately.
+## Run with Docker Compose
 
-## 1. What is in the repository
+Install Docker with Compose, then create `.env` from `.env.example` and replace the placeholder values for `POSTGRES_PASSWORD` and `JWT_SECRET`. Set a private `WEBHOOK_SECRET` too. Keep `.env` out of version control.
 
-The application includes:
-
--   a FastAPI API
--   PostgreSQL persistence using SQLModel / SQLAlchemy
--   Alembic database migrations
--   JWT-based user authentication
--   Redis-backed token blacklisting
--   campaign management
--   cohorts and teachers
--   inbound and outbound messages
--   message delivery/status events
--   webhook endpoints for simulated messaging-provider callbacks
--   audit events
--   seed data for exercising the messaging flow
-
-More detailed architecture documentation is available in:
-
-``` text
-architecture_readme/
-├── README_API.md
-└── README_WEBHOOK.md
-```
-
-`README_API.md` explains the regular API and authentication flows.
-
-`README_WEBHOOK.md` explains the messaging and webhook flow.
-
-`REPOSITORY_GUIDE.md` provides a broader walkthrough of the repository
-structure and the responsibility of the main modules.
-
-## 2. Prerequisites
-
-Before starting, make sure you have the following installed:
-
--   Python 3.12
--   `uv`
--   PostgreSQL
--   Redis
-
-The project was developed using PostgreSQL and Redis locally.
-
-## 3. Install the project
-
-Clone the repository and move into the project directory.
-
-Install the project dependencies:
-
-``` bash
-uv sync
-```
-
-## 4. Environment configuration
-
-Create your local `.env` file from the provided `.env.example` file.
-
-On macOS/Linux:
-
-``` bash
+```bash
 cp .env.example .env
+docker compose up --build -d
 ```
 
-On Windows PowerShell:
+Compose starts PostgreSQL and Redis, waits for both to become healthy, applies all Alembic migrations, then starts the API. Open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) or `/scalar`. `GET /` is the health endpoint. Database data remains in the `postgres_data` volume across restarts. Use `docker compose logs -f api` to inspect startup errors and `docker compose down` to stop services.
 
-``` powershell
-Copy-Item .env.example .env
+The API starts with an empty application database. To exercise a status webhook, register via `POST /user/signup`, log in via `POST /user/token` (email goes in the form's `username` field), create a campaign named `Weekly Teacher Check-in` via authenticated `POST /campaign/`, then run:
+
+```bash
+docker compose exec api python -m scripts.seed
 ```
 
-Update the values in `.env` for your local PostgreSQL and Redis setup
-where required.
+The seed reuses existing sample records. It provides a cohort, teachers, and an outbound message with `provider=fake_provider` and `provider_message_id=msg_out_001`. Send status callbacks to `POST /webhook/status` with `X-Webhook-Secret` set to `WEBHOOK_SECRET`. For example:
 
-The application also expects a webhook secret. The value configured for
-`WEBHOOK_SECRET` is used to authenticate requests to the webhook
-endpoints through the `X-Webhook-Secret` header.
-
-Do not commit your local `.env` file.
-
-## 5. Prepare PostgreSQL
-
-Create an empty PostgreSQL database for the application and make sure
-the database configuration in `.env` points to it.
-
-Then apply all existing migrations:
-
-``` bash
-uv run alembic upgrade head
+```json
+{"provider":"fake_provider","provider_event_id":"example_delivery_001","provider_message_id":"msg_out_001","status":"delivered","event_timestamp":"2026-09-29T19:02:00"}
 ```
 
-Alembic is responsible for creating the application schema. You do not
-need to create the tables manually.
+`POST /webhook/message` accepts incoming messages from known teacher phones. See the webhook architecture guide for its payload.
 
-## 6. Start Redis
+## Create a teacher
 
-Make sure a Redis server is running using the host and port configured
-in your `.env`.
+`POST /teacher/` requires a bearer token from `/user/token` and a pre-existing cohort. Example body:
 
-Redis is used by the authentication flow for token blacklisting.
-
-## 7. Start the API
-
-Run the FastAPI application:
-
-``` bash
-fastapi dev app/main.py
+```json
+{"name":"Aisha","phone":"919876543210","cohort_id":"<cohort UUID>"}
 ```
 
-Once the server is running, open the API documentation exposed by the
-application.
+It returns `201` with the new teacher. A missing cohort returns `404`; a phone already assigned to another teacher returns `409`. The phone must be 8–15 digits, with no punctuation. Cohorts currently come from the seed; there is no cohort creation API.
 
-Once the server is running, you can access the API documentation
-at http://127.0.0.1:8000/docs or the Scalar documentation
-at http://127.0.0.1:8000/scalar - Same is implemented in main.py
+## Local development and tests
 
-## 8. Verify the application
+The existing local helper remains available on macOS/Linux with Python 3.12, PostgreSQL, and Redis installed:
 
-Before continuing, verify that:
-
-1.  PostgreSQL is running.
-2.  Redis is running.
-3.  All Alembic migrations have completed successfully.
-4.  The FastAPI application starts without errors.
-5.  GET / responds successfully. (health endpoint)
-
-At this point, the base application is running correctly.
-
-## 9. Create the initial API data
-
-Before running the seed script, create the campaign used by the seeded
-messaging example.
-
-Using the existing authentication and campaign endpoints:
-
-1.  Register a user.
-2.  Log in and obtain an access token. When using the OAuth2 login form,
-    enter the user's email address in the `username` field.
-3.  Authorize your requests using that token.
-4.  Create a campaign with the exact name:
-
-``` text
-Weekly Teacher Check-in
+```bash
+bash scripts/setup_local.sh
 ```
 
-Create this campaign once.
+It installs dependencies with `uv`, starts local PostgreSQL and Redis, applies migrations, creates the example campaign through the API, runs the seed, and checks both webhook flows. Local service state and generated login credentials are stored under `.local-setup/`. The script uses the connection settings in `.env` and requires local database and Redis hosts.
 
-The campaign is created through the API rather than by the seed script
-so that the existing authenticated campaign and audit flow is exercised.
+With the local services running, run the complete test suite with one command:
 
-## 10. Run the seed
-
-Once the campaign exists, run:
-
-``` bash
-uv run python -m scripts.seed
+```bash
+.venv/bin/python -m pytest -q
 ```
 
-The seed creates/reuses the sample cohort, teachers and outbound message
-required for exercising the webhook flow.
+Tests create a uniquely named PostgreSQL database for each test, run all migrations, create their own fixtures, and drop the database afterward. They never read seed data. The PostgreSQL user in `.env` must be able to create databases. Tests do not require Redis; they replace the blacklist lookup only in the teacher authentication test.
 
-The seed is safe to run again against the same initialized database;
-existing seed records are reused rather than inserted again.
-
-If the required `Weekly Teacher Check-in` campaign does not exist, the
-seed will stop with an explanatory error.
-
-## 11. Exercise the webhook flow
-
-The repository contains webhook endpoints representing callbacks from a
-messaging provider.
-
-Webhook requests are authenticated separately from user-facing API
-requests. Send the configured webhook secret using:
-
-``` text
-X-Webhook-Secret: <your configured WEBHOOK_SECRET>
-```
-
-The existing webhook surface includes:
-
-``` text
-POST /webhook/message
-POST /webhook/status
-```
-
-The seeded outbound message can be used to exercise the status webhook.
-
-Refer to:
-
-``` text
-architecture_readme/README_WEBHOOK.md
-```
-
-for the webhook schemas, an example status payload, and an
-explanation of the message lifecycle.
-
-## 12. Suggested reading order
-
-Once the application is running, a useful order for understanding the
-repository is:
-
-``` text
-README.md
-    ↓
-REPOSITORY_GUIDE.md
-    ↓
-architecture_readme/README_API.md
-architecture_readme/README_WEBHOOK.md
-    ↓
-application code
-```
-
-You are expected to understand the relevant existing code before making
-changes for the assignment, but you are not expected to redesign or
-productionise unrelated parts of the application.
-
-## 13. Database changes
-
-If your assignment work requires a database schema change, create a new
-Alembic migration rather than modifying an existing migration.
-
-Review generated migrations before applying them.
-
-Apply new migrations with:
-
-``` bash
-uv run alembic upgrade head
-```
-
-## 14. Scope
-
-This repository is deliberately a small assessment scaffold.
-
-It contains enough application structure to provide realistic backend
-problems, but it does not attempt to implement every feature, validation
-rule, failure mode or operational concern that would exist in a
-production messaging system.
-
-Unless an assignment task specifically requires it, you do not need to fix
-unrelated issues or add production features outside the requested scope.
-If you do notice something that looks like a correctness problem rather than
-a deliberate scope limitation, note it, whether you act on it is a separate judgement.
+If setting up manually, run `uv sync --locked`, start PostgreSQL and Redis using `.env`, create `POSTGRES_DB`, run `uv run alembic upgrade head`, and start `uv run uvicorn app.main:app --reload`.
