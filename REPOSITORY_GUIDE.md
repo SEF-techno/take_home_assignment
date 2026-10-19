@@ -237,8 +237,8 @@ scripts/
     └── message.py
 ```
 
-Not every entity has a CRUD API. For example, this scaffold does not
-provide endpoints for creating cohorts, teachers, or outbound messages.
+Not every entity has a CRUD API. The assignment adds authenticated teacher
+creation, while cohorts and outbound messages still have no creation endpoint.
 
 Seed data supplies enough state to exercise the implemented parts of the
 system. This is particularly important for webhook testing.
